@@ -1,0 +1,261 @@
+NAME
+    POE::Class - a base class for everything OO POE
+
+SYNOPSIS
+        package My::Thingy;
+        use POE;
+
+        # POE::Class is a base class
+        use base 'POE::Class';
+
+        # None of these method are "required" but your session is not going to live
+        # long if you do not atleast define a handler_start (which is the handler
+        # for _start).
+        sub handler_start {
+            my $self = $_[OBJECT];
+            # This is required for object/session tracking
+            $self->SUPER::handler_start(@_[1 .. $#_]);
+
+            # do something that keeps you alive
+        }
+
+        sub handler_stop {
+            my $self = $_[OBJECT];
+            # This is required for object/session tracking
+            # and for internal cleanup
+            $self->SUPER::handler_stop(@_[1 .. $#_]);
+        }
+
+        sub handler_child {
+            my $self = $_[OBJECT];
+            # This is required for object/session tracking
+            $self->SUPER::handler_child(@_[1 .. $#_]);
+        }
+
+        sub handler_parent {
+            my $self = $_[OBJECT];
+            # This is required for object/session tracking
+            $self->SUPER::handler_parent(@_[1 .. $#_]);
+        }
+
+        # Called from handler_start, define states we use
+        sub create_states {
+            my ($self) = @_;
+            $poe_kernel->state(state_name => $self, 'handler_state_name');
+        }
+
+        # Takes an array of key value pairs and calls
+        # the corresponding set method (key) with the value
+        my $self = new My::Thingy(
+            attrib1 => "stuff",
+            attrib2 => "more stuff"
+        );
+
+        # Set what session type this will be
+        $self->set_session_class("POE::Session::OtherSession");
+
+        # Create the session
+        $self->start;
+
+        # Every object has a unique ID for tracking
+        print $self->ID, "\n";
+
+        # get your session
+        my $session = $self->get_session;
+
+        # Session/Object hierarchy
+
+        # Get the objects of your child sessions
+        my @child_objects = $self->get_child_objects;
+
+        # Get your parent session object
+        # returns undef if you have no parent
+        my $parent = $self->get_parent_object;
+
+        # Resolve a session to the object for that session
+        # $session can be a session ID or a session object
+        my $object = POE::Class->resolve_object($session);
+
+        # Events
+
+        # post an event to all your children
+        $self->post_children(event => @args);
+
+        # post an event to your parent
+        $self->post_parent(event => @args);
+        # - or -
+        # Not as safe, does not check the existence of
+        # a parent
+        $self->get_parent_object->post(event => @args);
+
+DESCRIPTION
+    POE::Class is a base class for making OO POE classes. This design has a
+    one to one object relationship to a POE session, there is one object for
+    each session. This is currently in the prototyping stages. The whole API
+    may change tomarrow.
+
+INSTANCE METHODS
+  Accessors
+    configure
+        This method is called from the default "new()" constructor. It
+        expects an array of key value pairs. The keys should be the names of
+        accessor methods. The value is the argument passed to the accessor
+        method. This methods main purpose is to make it easier to set
+        instance attributes. This method has no return value. If any of the
+        attributes are not object methods, "configure()" will fatal.
+
+            $obj->configure(
+                attribute1 => "value1",
+                attrib2    => "value2"
+            );
+
+    get_session_class
+    set_session_class
+        This accessor sets the name of the session class to use when we
+        create a session. The default value is *POE::Session*. This session
+        is created when you call "start()".
+
+    get_session
+    set_session
+        Stores the session object. Every object in this model corresponds to
+        a session. This attribute is set inside the default
+        "handler_start()".
+
+    ID  This is the unique ID for this session. It is set in the default
+        "new()" constructor to the return of "allocate_object_id()".
+
+    get_parent_object
+        This contains the parents *object*. This attribute is set in the
+        default "handler_parent()". undef will be returned if you have no
+        parent.
+
+    get_child_objects
+        All children objects are tracked with the default handlers in
+        POE::Class. This is an access only function. It returns an array of
+        child objects. These objects are tracked in the default
+        "handler_child()" which also relies on "resolve_session()" which
+        relies on the default "handler_start()".
+
+    get_alias
+    set_alias
+        This attribute is here because it is a common thing to want to do.
+        If this is set before the session is created an alias of that name
+        will be created for the session. This happens in "handler_start()".
+
+    get_shutdown
+    set_shutdown
+        Another attribute here because of common use. It is simply a flag.
+        This flag is set in "handler_shutdown" to 1. POE::Class does not use
+        this flag, it is here because most, if not all, subclasses do use
+        it.
+
+  Sending Events/Signals
+    These methods are only to make posting events to object sessions easier.
+
+    post
+    yield
+        Post's an event to the object's session. The first argument should
+        be the event name. All other arguments will be passed to the event.
+        Returns what POE::Kernel's "post()" method returns. POE::Kernel.
+
+            $self->post(event_name => "arg1", "arg2");
+
+    post_children
+        This method sends an event to all of your children. Takes the same
+        arguments as "post()". This method has no return value.
+
+    post_parent
+        This method sends an event to you parent if you have one. It takes
+        the same arguments as "post()". Returns what POE::Kernel's "post()"
+        method returns. POE::Kernel.
+
+    signal
+        Sends a signal to the session for this object. Arguments ae the same
+        as POE::Kernel's "signal()" method minus the session. So:
+
+            $obj->signal("DIE");
+
+        POE::Kernel for details on what this is doing.
+
+  External Reference Counts
+    refcount_increment
+    refcount_decrement
+        These methods change the recount for the object's session. The
+        arguments are the same as POE::Kernel's methods of the same name
+        without the session ID. So:
+
+            $obj->refcount_increment("thingy");
+            $obj->refcount_decrement("thingy");
+
+        POE::Kernel for details on what this is doing.
+
+  Startup
+    new This is the constructor. It does not do much. First it sets the
+        object ID using "allocate_object_id", then it calles "configure()"
+        we have any arguments. This method blesses the object as a hash
+        reference. If you do not want that override this in your subclass.
+        If you do override this method be sure to set the object ID.
+
+    start
+        This method actually creates the session and returns it. The session
+        is created with the following object states.
+
+            _start   => handler_start
+            _stop    => handler_stop
+            _child   => handler_child
+            _parent  => handler_parent
+            shutdown => handler_shutdown
+
+        All of these handlers exist in POE::Class so do not worry about
+        defining them unless you want to.
+
+        This method also sets the attribute parrent object to the current
+        active sessions object.
+
+STATES
+    POE::Class defines four default object states for POE's *special*
+    states.
+
+    _start - handler_start
+        This method sets the attribute session to the current session and
+        sets up session -> object tracking. If you override this method in
+        your subclass you should call it in your method or tracking will not
+        work.
+
+    _stop - handler_stop
+        This method free all global resources. If you override it in your
+        subclass you must call it from your subclass (through SUPER::) or
+        your program will leak.
+
+    _child - handler_child
+        Trackes children.
+
+    _parent - handler_parent
+        Updates parent object attribute to the new parent.
+
+CLASS METHODS
+  Object ID Allocation
+    These method are not needed unless you override the methods/handlers
+    that use them.
+
+    allocate_object_id
+        Allocates a new object ID and returns it.
+
+    free_object_id
+        Free's an allocated object ID. Expect the object ID as the only
+        argument.
+
+  External Session Object Tracking
+        resolve_session
+            Given a session object or a session ID returns the corresponding
+            object or undef if no object could be found.
+
+TODO
+        Write better documentation.
+
+AUTHOR
+        Scott Beck <sbeck@gossamer-threads.com>
+
+SEE ALSO
+        POE
+
